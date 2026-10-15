@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grammar Knight</title>
+<style>
+  :root{
+    --ink:#0d0b14; --panel:#1a1626; --line:#3a3150; --text:#efe9ff; --dim:#a79cc4;
+    --gold:#ffcf4d; --good:#5ad16b; --bad:#ff5a6a; --mark:#ffcf4d;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; height:100%; background:var(--ink); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden;
+    -webkit-user-select:none; user-select:none;}
+  #app{display:flex; flex-direction:column; align-items:center; height:100%;}
+  #hud{width:min(960px,96vw); display:flex; justify-content:space-between; align-items:center;
+    gap:12px; padding:10px 4px 6px; font-weight:700; font-size:15px; flex-wrap:wrap;}
+  #hearts{color:#ff4d6a; font-size:20px; letter-spacing:2px;}
+  #strikes .x{color:var(--bad);} #strikes .o{color:#4a4060;}
+  .chip{background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:4px 12px;}
+  #stage{flex:1; min-height:0; width:100%; display:flex; align-items:center; justify-content:center; position:relative;}
+  canvas{display:block; border-radius:10px; box-shadow:0 0 0 2px var(--line);}
+  #qpanel{width:min(960px,96vw); background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:12px 16px; margin:8px 0 12px; min-height:92px; font-size:17px; line-height:1.45;}
+  #qpanel .tag{font-size:12px; font-weight:800; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase;}
+  #qpanel mark{background:none; color:var(--mark); font-weight:800; text-decoration:underline;}
+  #qpanel .prompt{margin-top:6px; font-weight:700; color:#fff;}
+  #qpanel .blank{display:inline-block; min-width:110px; border-bottom:2px solid var(--gold); margin:0 4px;}
+  #banner{position:absolute; top:18px; left:50%; transform:translateX(-50%); padding:10px 22px; border-radius:12px;
+    font-weight:800; font-size:20px; pointer-events:none; text-align:center; max-width:90%;}
+  #banner.good{background:#173d22; border:2px solid var(--good); color:#bff5c8;}
+  #banner.bad{background:#47161d; border:2px solid var(--bad); color:#ffc9cf;}
+  .hidden{display:none !important;}
+  #overlay{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(13,11,20,.92); overflow:auto; padding:16px;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:24px 28px;
+    width:min(640px,94vw); max-height:100%; overflow:auto;}
+  .card h1{margin:0 0 4px; font-size:44px; letter-spacing:2px; color:var(--gold); text-shadow:0 3px 0 #7a5a10;}
+  .card h2{margin:0 0 8px; font-size:30px;}
+  .card h3{margin:18px 0 6px; font-size:14px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim);}
+  .card p,.card li{color:#d8d0ee; line-height:1.5;}
+  .card ul{padding-left:20px; margin:6px 0;}
+  .key{display:inline-block; min-width:26px; padding:1px 7px; border:1px solid var(--line); border-bottom-width:3px;
+    border-radius:6px; background:#251f36; font-weight:700; font-size:13px; text-align:center;}
+  .btn{margin-top:18px; font:inherit; font-weight:800; font-size:18px; padding:12px 28px; border-radius:12px; cursor:pointer;
+    border:none; background:var(--gold); color:#2a1e00;}
+  .btn:hover{filter:brightness(1.08);}
+  table{width:100%; border-collapse:collapse; margin-top:10px; font-size:14px;}
+  th,td{text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);}
+  th{color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:1px;}
+  td.ok{color:var(--good); font-weight:700;} td.no{color:var(--bad); font-weight:700;}
+  .credits{font-size:13px; color:var(--dim);}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span id="hearts"></span>
+    <span class="chip" id="roomChip">Question 1 / 10</span>
+    <span class="chip" id="scoreChip">Score 0</span>
+    <span class="chip" id="strikes"></span>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="banner" class="hidden"></div>
+    <div id="overlay"></div>
+  </div>
+  <div id="qpanel"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   GRAMMAR KNIGHT — a dungeon crawler that teaches English grammar.
+   Purpose: entertain people while they learn English grammar.
+   Single-file HTML5 canvas game. All art is drawn in code, all sound is
+   synthesized with the WebAudio API. No external assets.
+   ========================================================================= */
+
+/* ------------------------------ Questions -------------------------------
+   Each question: n = number, s = full sentence, w = the word to highlight,
+   p = the sentence to complete (____ = the blank), opts = answer choices,
+   a = index of the correct choice. Only 3 choices are shown per room (the
+   correct one + 2 random wrong ones), one on each door. */
+const QUESTIONS = [
+  // ---- Alejandro's 10 sentences go here (same format), e.g.
+  // {n:1, s:"...", w:"...", p:"“...” is a/an ____.", opts:["...","...","...","..."], a:0},
+
+  // ---- Nikita's sentences ----
+  {n:11, s:"Although Elizabeth had lost her confidence, the team encouraged her to present its research to the committee, whose members praised her courage.",
+   w:"Elizabeth", p:"“Elizabeth” is a/an ____.", opts:["Common noun","Proper noun","Abstract noun","Collective noun"], a:1},
+  {n:12, s:"Neither of the students remembered whose notebook had been left beside the library, but someone insisted that the blue one was hers.",
+   w:"Neither", p:"“Neither” is a/an ____.", opts:["Personal pronoun","Reflexive pronoun","Indefinite pronoun","Possessive pronoun"], a:2},
+  {n:13, s:"The jury announced its decision after they had carefully examined the evidence, which revealed the honesty and determination of Mr. Thompson.",
+   w:"jury", p:"“jury” is a/an ____.", opts:["Abstract noun","Proper noun","Collective noun","Possessive noun"], a:2},
+  {n:14, s:"Those who believe that success depends entirely on wealth often forget that kindness, patience, and perseverance are qualities that distinguish them from others.",
+   w:"kindness", p:"“kindness” is a/an ____.", opts:["Concrete noun","Abstract noun","Collective noun","Proper noun"], a:1},
+  {n:15, s:"My brother and I visited the United Nations, where several delegates discussed freedom, equality, and peace, ideas that they believed would benefit humanity.",
+   w:"peace", p:"“peace” is a/an ____.", opts:["Proper noun","Common noun","Collective noun","Abstract noun"], a:3},
+  {n:16, s:"The flock scattered when it heard the farmer's voice, but those that remained near the barn continued searching for their missing young.",
+   w:"farmer's", p:"“farmer's” (in “farmer's voice”) is a/an ____.", opts:["Collective noun","Possessive noun form","Abstract noun","Proper noun"], a:1},
+  {n:17, s:"Whoever left these books on our desk must explain themselves, because neither of the teachers recognizes the handwriting on any of them.",
+   w:"themselves", p:"“themselves” is a/an ____.", opts:["Demonstrative pronoun","Possessive pronoun","Reflexive pronoun","Interrogative pronoun"], a:2},
+  {n:18, s:"Sarah's determination impressed everyone in the audience, especially those who doubted her ability to overcome failure and achieve her own goals.",
+   w:"everyone", p:"“everyone” is a/an ____.", opts:["Indefinite pronoun","Personal pronoun","Relative pronoun","Demonstrative pronoun"], a:0},
+  {n:19, s:"The children's excitement grew when each of them discovered that the mysterious package contained something belonging to their grandparents, including Grandmother's diary and Grandfather's photographs.",
+   w:"each", p:"“each” (in “each of them”) is a/an ____.", opts:["Possessive pronoun","Indefinite pronoun","Reflexive pronoun","Interrogative pronoun"], a:1},
+  {n:20, s:"What surprised Daniel most was that the committee had changed its opinion, despite his arguments and the evidence that he himself had presented in support of justice.",
+   w:"What", p:"“What” (at the start of the sentence) is a/an ____.", opts:["Personal pronoun","Possessive pronoun","Interrogative pronoun","Relative pronoun"], a:2},
+];
+
+/* ------------------------------ Canvas setup ---------------------------- */
+const W = 960, H = 640, T = 48;          // room size and wall thickness
+const DOOR_X = [220, 480, 740], DOOR_HALF = 45;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha:false });
+const stage = document.getElementById('stage');
+let scale = 1, pxScale = 1, roomCache = null;
+
+function fit(){
+  const aw = stage.clientWidth - 16, ah = stage.clientHeight - 8;
+  scale = Math.max(0.3, Math.min(aw/W, ah/H));
+  // cap pixel density so Retina laptops don't render 4x the pixels
+  pxScale = scale * Math.min(window.devicePixelRatio || 1, 1.5);
+  canvas.style.width = Math.floor(W*scale)+'px';
+  canvas.style.height = Math.floor(H*scale)+'px';
+  canvas.width = Math.floor(W*pxScale);
+  canvas.height = Math.floor(H*pxScale);
+  buildRoomCache();
+}
+window.addEventListener('resize', fit);
+
+/* ------------------------------ Sound ----------------------------------- */
+const Snd = {
+  ctx:null, out:null,
+  init(){
+    if(this.ctx) { if(this.ctx.state==='suspended') this.ctx.resume(); return; }
+    try{
+      this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+      this.out = this.ctx.createGain(); this.out.gain.value = 0.35; this.out.connect(this.ctx.destination);
+    }catch(e){ this.ctx = null; }
+  },
+  tone(f, d, type, v, to){
+    if(!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type||'square';
+    o.frequency.setValueAtTime(f, t);
+    if(to) o.frequency.exponentialRampToValueAtTime(to, t+d);
+    g.gain.setValueAtTime(v||0.2, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+d);
+    o.connect(g); g.connect(this.out); o.start(t); o.stop(t+d+0.02);
+  },
+  seq(notes, gap, d, type, v){ notes.forEach((n,i)=> setTimeout(()=> this.tone(n,d,type,v), i*gap)); },
+  swing(){ this.tone(520,0.08,'triangle',0.14,240); },
+  hit(){ this.tone(190,0.1,'square',0.16,90); },
+  kill(){ this.tone(300,0.16,'square',0.14,700); },
+  hurt(){ this.tone(230,0.28,'sawtooth',0.2,70); },
+  good(){ this.seq([523,659,784,1047],80,0.18,'triangle',0.2); },
+  bad(){ this.seq([300,220,150],120,0.25,'sawtooth',0.16); },
+  chest(){ this.seq([392,523,659,784,1047],70,0.2,'square',0.13); },
+  door(){ this.tone(110,0.45,'sawtooth',0.12,55); },
+};
+
+/* ------------------------------ Input ----------------------------------- */
+const keys = new Set();
+let attackPressed = false;
+window.addEventListener('keydown', e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  keys.add(e.code);
+  Snd.init();
+  if(e.code==='Space' && !e.repeat) attackPressed = true;
+  if(e.code==='Enter' && overlayAction) { const f = overlayAction; overlayAction = null; f(); }
+});
+window.addEventListener('keyup', e=> keys.delete(e.code));
+window.addEventListener('blur', ()=> keys.clear());
+const down = (...c)=> c.some(k=> keys.has(k));
+
+/* ------------------------------ Helpers --------------------------------- */
+const rand = (a,b)=> a + Math.random()*(b-a);
+const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+const esc = s=> String(s).replace(/[&<>"]/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $ = id=> document.getElementById(id);
+
+/* ------------------------------ Game state ------------------------------ */
+const MAX_WRONG = 3;
+let state = 'title';   // title | fight | chest | doors | feedback | over | win
+let qi = 0, wrong = 0, correct = 0, answers = [];
+let player, enemies = [], particles = [], floats = [], chest = null, doors = [];
+let roomKind = 'start', roomFade = 0, shake = 0, doorAnim = 0, feedbackTimer = 0, nextRoom = null;
+let overlayAction = null;
+
+const UPGRADES = [
+  {name:'Sharper Sword',   desc:'+1 damage',          apply:p=>{ p.dmg++; }},
+  {name:'Long Blade',      desc:'+14 reach',          apply:p=>{ p.reach += 14; }},
+  {name:'Swift Boots',     desc:'+30 speed',          apply:p=>{ p.speed += 30; }},
+  {name:'Heart Container', desc:'+1 heart & full heal', apply:p=>{ p.maxHp++; p.hp = p.maxHp; }},
+  {name:'Healing Potion',  desc:'All hearts restored', apply:p=>{ p.hp = p.maxHp; }},
+];
+
+function newPlayer(){
+  return { x:W/2, y:H-T-40, r:14, hp:5, maxHp:5, speed:200, dmg:1, reach:54,
+           fx:0, fy:-1, atk:0, cd:0, inv:0, walk:0, kbx:0, kby:0 };
+}
+
+/* ------------------------------ Enemies --------------------------------- */
+const ETYPES = {
+  slime:    { hp:2, speed:55,  r:14, dmg:1 },
+  bat:      { hp:1, speed:100, r:11, dmg:1 },
+  skeleton: { hp:4, speed:105, r:14, dmg:1 },
+  ogre:     { hp:9, speed:72,  r:22, dmg:2 },
+};
+function spawnEnemy(type){
+  const d = ETYPES[type];
+  let x, y, tries = 0;
+  do { x = rand(T+40, W-T-40); y = rand(T+60, H-T-180); tries++; }
+  while(Math.hypot(x-player.x, y-player.y) < 240 && tries < 30);
+  enemies.push({ type, x, y, hp:d.hp, maxHp:d.hp, speed:d.speed, r:d.r, dmg:d.dmg,
+                 kbx:0, kby:0, hurt:0, t:rand(0,10), spawn:0.6 });
+}
+
+/* ------------------------------ Flow ------------------------------------ */
+function startGame(){
+  hideOverlay();
+  qi = 0; wrong = 0; correct = 0; answers = [];
+  player = newPlayer();
+  enterRoom('start');
+}
+
+function enterRoom(kind){
+  roomKind = kind;
+  player.x = W/2; player.y = H-T-40; player.fx = 0; player.fy = -1; player.kbx = player.kby = 0;
+  enemies = []; particles = []; floats = []; chest = null; doors = []; doorAnim = 0;
+  roomFade = 1;
+  const lvl = Math.floor(qi/3);
+  if(kind === 'chest'){
+    chest = { x:W/2, y:H/2-20, open:false, timer:0 };
+    state = 'chest';
+  } else {
+    let list;
+    if(kind === 'hard'){
+      list = ['skeleton','skeleton','skeleton','ogre'];
+      for(let i=0;i<lvl;i++) list.push('skeleton');
+      if(lvl >= 2) list.push('ogre');
+    } else if(kind === 'easy'){
+      list = lvl < 2 ? ['slime','bat'] : ['slime','slime','bat'];
+    } else {
+      list = ['slime','slime','slime','bat'];
+    }
+    list.forEach(spawnEnemy);
+    state = 'fight';
+  }
+  updateHUD(); updatePanel();
+}
+
+function openDoors(){
+  const q = QUESTIONS[qi];
+  const wrongs = shuffle(q.opts.map((_,i)=>i).filter(i=> i!==q.a)).slice(0,2);
+  const picks = shuffle([q.a, ...wrongs]);
+  doors = picks.map((opt,k)=> ({ x:DOOR_X[k], opt, letter:'ABC'[k] }));
+  state = 'doors'; doorAnim = 0;
+  Snd.door();
+  updatePanel();
+}
+
+function chooseDoor(d){
+  const q = QUESTIONS[qi];
+  const ok = d.opt === q.a;
+  answers.push({ q, picked:d.opt, ok });
+  if(ok){ correct++; Snd.good(); } else { wrong++; Snd.bad(); shake = 0.4; }
+  showBanner(ok ? `✔ Correct! “${q.w}” is: ${q.opts[q.a]}` : `✘ Wrong! The answer was: ${q.opts[q.a]}`, ok);
+  qi++;
+  state = 'feedback'; feedbackTimer = 2.2;
+  nextRoom = ()=>{
+    if(wrong >= MAX_WRONG) return gameOver(`You got ${MAX_WRONG} answers wrong!`);
+    if(qi >= QUESTIONS.length) return victory();
+    // right answer: an easy room or a treasure chest. Wrong answer: hard enemies.
+    enterRoom(ok ? (Math.random() < 0.5 ? 'chest' : 'easy') : 'hard');
+  };
+  updateHUD();
+}
+
+function gameOver(reason){
+  state = 'over';
+  showOverlay(`
+    <h2 style="color:var(--bad)">Game Over</h2>
+    <p>${esc(reason)} The dungeon resets and you start again from the first door.</p>
+    <p>Score: <b>${correct}</b> correct, <b>${wrong}</b> wrong.</p>
+    ${reviewTable()}
+    <button class="btn" id="ovBtn">Restart (Enter)</button>`, startGame);
+}
+
+function victory(){
+  state = 'win';
+  showOverlay(`
+    <h2 style="color:var(--gold)">Victory! 🏆</h2>
+    <p>You escaped the dungeon. Final score: <b>${correct} / ${QUESTIONS.length}</b></p>
+    ${reviewTable()}
+    <button class="btn" id="ovBtn">Play Again (Enter)</button>`, startGame);
+}
+
+function reviewTable(){
+  if(!answers.length) return '';
+  return `<table><tr><th>Question</th><th>Your answer</th><th>Correct answer</th></tr>${
+    answers.map(a=> `<tr><td>${a.q.n}. “${esc(a.q.w)}”</td><td class="${a.ok?'ok':'no'}">${esc(a.q.opts[a.picked])}</td><td>${esc(a.q.opts[a.q.a])}</td></tr>`).join('')
+  }</table>`;
+}
+
+function titleScreen(){
+  state = 'title';
+  showOverlay(`
+    <h1>GRAMMAR KNIGHT</h1>
+    <p>Fight your way through the dungeon and pick the right door to learn English grammar!</p>
+    <h3>How to play</h3>
+    <ul>
+      <li>Use the <span class="key">←</span> <span class="key">↑</span> <span class="key">→</span> <span class="key">↓</span> arrow keys to move your knight.</li>
+      <li>Press <span class="key">Space</span> to attack the enemies.</li>
+      <li>Once you defeat all the enemies, 3 doors open. Read the sentence and walk through the door with the correct answer.</li>
+      <li><b style="color:var(--good)">Right answer:</b> easy enemies, or a treasure chest with an upgrade.</li>
+      <li><b style="color:var(--bad)">Wrong answer:</b> difficult enemies. ${MAX_WRONG} wrong answers and the game restarts!</li>
+    </ul>
+    <h3>Credits</h3>
+    <p class="credits">Developers: Nico (Alejandro), Nikita, Sebastian<br>Code: Nico &nbsp;·&nbsp; Sentences: Nikita, Alejandro</p>
+    <button class="btn" id="ovBtn">Start (Enter)</button>`, startGame);
+  updatePanel();
+}
+
+/* ------------------------------ DOM UI ---------------------------------- */
+let bannerTimer = null;
+function showBanner(text, ok){
+  const b = $('banner');
+  b.textContent = text; b.className = ok ? 'good' : 'bad';
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(()=> b.classList.add('hidden'), 2400);
+}
+function showOverlay(html, action){
+  const o = $('overlay');
+  o.innerHTML = `<div class="card">${html}</div>`;
+  o.classList.remove('hidden');
+  overlayAction = action;
+  const btn = $('ovBtn');
+  if(btn) btn.addEventListener('click', ()=>{ Snd.init(); overlayAction = null; action(); });
+}
+function hideOverlay(){ $('overlay').classList.add('hidden'); overlayAction = null; }
+
+function updateHUD(){
+  if(!player) return;
+  $('hearts').textContent = '♥'.repeat(Math.max(0,player.hp)) + '♡'.repeat(Math.max(0, player.maxHp-player.hp));
+  $('roomChip').textContent = `Question ${Math.min(qi+1, QUESTIONS.length)} / ${QUESTIONS.length}`;
+  $('scoreChip').textContent = `Score ${correct}`;
+  let s = 'Wrong: ';
+  for(let i=0;i<MAX_WRONG;i++) s += i < wrong ? '<span class="x">✘</span>' : '<span class="o">●</span>';
+  $('strikes').innerHTML = s;
+}
+
+function highlighted(q){
+  // highlight the first whole-word match of the target word in the sentence
+  const re = new RegExp('(^|[^A-Za-z\'])(' + q.w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')(?![A-Za-z])');
+  return esc(q.s).replace(re, (m, pre, word)=> pre + '<mark>' + word + '</mark>');
+}
+function promptHtml(q){
+  return esc(q.p).replace('____', '<span class="blank"></span>');
+}
+function updatePanel(){
+  const p = $('qpanel');
+  if(state === 'title' || !player){ p.innerHTML = '<span class="tag">Grammar Knight</span><div>Press Start to enter the dungeon.</div>'; return; }
+  const q = QUESTIONS[Math.min(qi, QUESTIONS.length-1)];
+  if(state === 'fight'){
+    p.innerHTML = `<span class="tag">${roomKind==='hard' ? '⚠ Hard room' : roomKind==='easy' ? 'Easy room' : 'Room 1'} — defeat all the enemies to open the doors</span>
+      <div>${highlighted(q)}</div>`;
+  } else if(state === 'chest'){
+    p.innerHTML = `<span class="tag">💰 Treasure room — walk into the chest to open it</span><div>${highlighted(q)}</div>`;
+  } else if(state === 'doors'){
+    p.innerHTML = `<span class="tag">Question ${q.n} — walk through the door with the correct answer</span>
+      <div>${highlighted(q)}</div><div class="prompt">Complete the sentence: ${promptHtml(q)}</div>`;
+  }
+}
+
+/* ------------------------------ Particles ------------------------------- */
+function burst(x, y, n, color, speed, life){
+  for(let i=0;i<n;i++){
+    const a = rand(0, Math.PI*2), s = speed*rand(0.3,1);
+    particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:life*rand(0.6,1.2), max:life, color, size:rand(2,5) });
+  }
+  if(particles.length > 300) particles.splice(0, particles.length-300);
+}
+function floatText(x, y, text, color){ floats.push({ x, y, text, color, life:1.4 }); }
+
+/* ------------------------------ Update ---------------------------------- */
+function update(dt){
+  // particles / floating text always animate
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.life -= dt;
+    if(p.life <= 0){ particles[i] = particles[particles.length-1]; particles.pop(); continue; }
+    p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 1-3*dt; p.vy *= 1-3*dt;
+  }
+  for(let i=floats.length-1;i>=0;i--){ floats[i].life -= dt; floats[i].y -= 30*dt; if(floats[i].life<=0) floats.splice(i,1); }
+  roomFade = Math.max(0, roomFade - dt*2.5);
+  shake = Math.max(0, shake - dt);
+  if(state === 'doors') doorAnim = Math.min(1, doorAnim + dt*1.6);
+
+  if(state === 'feedback'){
+    feedbackTimer -= dt;
+    if(feedbackTimer <= 0 && nextRoom){ const f = nextRoom; nextRoom = null; f(); }
+    attackPressed = false;
+    return;
+  }
+  if(state !== 'fight' && state !== 'chest' && state !== 'doors'){ attackPressed = false; return; }
+
+  updatePlayer(dt);
+  if(state === 'fight') updateEnemies(dt);
+
+  if(state === 'chest' && chest){
+    if(!chest.open && Math.hypot(player.x-chest.x, player.y-chest.y) < 44){
+      chest.open = true; chest.timer = 1.2;
+      const up = UPGRADES[Math.floor(Math.random()*UPGRADES.length)];
+      up.apply(player);
+      Snd.chest();
+      burst(chest.x, chest.y-10, 40, '#ffcf4d', 260, 0.9);
+      floatText(chest.x, chest.y-50, `${up.name}! ${up.desc}`, '#ffcf4d');
+      updateHUD();
+    }
+    if(chest.open){ chest.timer -= dt; if(chest.timer <= 0 && state === 'chest') openDoors(); }
+  }
+}
+
+function updatePlayer(dt){
+  const p = player;
+  let mx = (down('ArrowRight','KeyD')?1:0) - (down('ArrowLeft','KeyA')?1:0);
+  let my = (down('ArrowDown','KeyS')?1:0) - (down('ArrowUp','KeyW')?1:0);
+  if(mx || my){ const l = Math.hypot(mx,my); mx/=l; my/=l; p.fx = mx; p.fy = my; p.walk += dt; }
+  p.x += (mx*p.speed + p.kbx)*dt;
+  p.y += (my*p.speed + p.kby)*dt;
+  p.kbx *= Math.exp(-10*dt); p.kby *= Math.exp(-10*dt);
+
+  p.x = clamp(p.x, T+p.r, W-T-p.r);
+  p.y = Math.min(p.y, H-T-p.r);
+  if(p.y < T+p.r){
+    const d = state === 'doors' && doorAnim > 0.6 ? doors.find(d=> Math.abs(p.x-d.x) < DOOR_HALF) : null;
+    if(d){
+      p.x = clamp(p.x, d.x-DOOR_HALF+p.r, d.x+DOOR_HALF-p.r);
+      if(p.y < T-6){ chooseDoor(d); return; }
+    } else {
+      p.y = T+p.r;
+    }
+  }
+
+  p.inv = Math.max(0, p.inv-dt);
+  p.cd = Math.max(0, p.cd-dt);
+  p.atk = Math.max(0, p.atk-dt);
+  if(attackPressed && p.cd <= 0){
+    p.atk = 0.18; p.cd = 0.3;
+    Snd.swing();
+    swordHit();
+  }
+  attackPressed = false;
+}
+
+function swordHit(){
+  const p = player;
+  for(const e of enemies){
+    if(e.spawn > 0) continue;
+    const dx = e.x-p.x, dy = e.y-p.y, dist = Math.hypot(dx,dy);
+    if(dist > p.reach + e.r) continue;
+    const dot = (dx*p.fx + dy*p.fy) / (dist||1);
+    if(dot < 0.3 && dist > p.r+e.r+6) continue;   // must be roughly in front (unless touching)
+    e.hp -= p.dmg; e.hurt = 0.15;
+    const kb = e.type === 'ogre' ? 180 : 340;
+    e.kbx = dx/(dist||1)*kb; e.kby = dy/(dist||1)*kb;
+    Snd.hit();
+    burst(e.x, e.y, 8, '#fff', 180, 0.3);
+  }
+  for(let i=enemies.length-1;i>=0;i--){
+    const e = enemies[i];
+    if(e.hp > 0) continue;
+    const col = {slime:'#5ad16b', bat:'#b07cff', skeleton:'#e8e2d0', ogre:'#c0563f'}[e.type];
+    burst(e.x, e.y, 22, col, 240, 0.6);
+    Snd.kill();
+    enemies.splice(i,1);
+  }
+  if(state === 'fight' && enemies.length === 0) openDoors();
+}
+
+function updateEnemies(dt){
+  const p = player;
+  for(const e of enemies){
+    e.t += dt;
+    if(e.spawn > 0){ e.spawn -= dt; continue; }
+    e.hurt = Math.max(0, e.hurt-dt);
+    let dx = p.x-e.x, dy = p.y-e.y;
+    const dist = Math.hypot(dx,dy) || 1;
+    dx /= dist; dy /= dist;
+    let sp = e.speed;
+    if(e.type === 'slime') sp *= 0.4 + Math.abs(Math.sin(e.t*4));      // hops
+    if(e.type === 'bat'){ const w = Math.sin(e.t*6)*0.9; const ox = -dy*w, oy = dx*w; dx += ox; dy += oy; } // zig-zag
+    // keep enemies from stacking on top of each other
+    for(const o of enemies){
+      if(o === e) continue;
+      const ox = e.x-o.x, oy = e.y-o.y, od = Math.hypot(ox,oy);
+      if(od > 0 && od < e.r+o.r+4){ dx += ox/od*0.8; dy += oy/od*0.8; }
+    }
+    e.x += (dx*sp + e.kbx)*dt;
+    e.y += (dy*sp + e.kby)*dt;
+    e.kbx *= Math.exp(-8*dt); e.kby *= Math.exp(-8*dt);
+    e.x = clamp(e.x, T+e.r, W-T-e.r);
+    e.y = clamp(e.y, T+e.r, H-T-e.r);
+
+    if(p.inv <= 0 && Math.hypot(p.x-e.x, p.y-e.y) < p.r+e.r-2){
+      p.hp -= e.dmg; p.inv = 1.0; shake = 0.25;
+      p.kbx = (p.x-e.x)/dist*420; p.kby = (p.y-e.y)/dist*420;
+      Snd.hurt();
+      burst(p.x, p.y, 12, '#ff4d6a', 200, 0.4);
+      updateHUD();
+      if(p.hp <= 0){
+        state = 'feedback'; feedbackTimer = 0.8;
+        nextRoom = ()=> gameOver('Your knight was defeated!');
+        return;
+      }
+    }
+  }
+}
+
+/* ------------------------------ Drawing --------------------------------- */
+// The floor and walls never change, so draw them once to an offscreen canvas
+// and copy it each frame (keeps the game smooth on laptops).
+function buildRoomCache(){
+  roomCache = document.createElement('canvas');
+  roomCache.width = canvas.width; roomCache.height = canvas.height;
+  const c = roomCache.getContext('2d');
+  c.setTransform(pxScale,0,0,pxScale,0,0);
+  // walls (stone bricks)
+  c.fillStyle = '#463c5c';
+  c.fillRect(0,0,W,T); c.fillRect(0,H-T,W,T); c.fillRect(0,0,T,H); c.fillRect(W-T,0,T,H);
+  c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 2;
+  for(let y=0; y<H; y+=16){
+    const off = (y/16)%2 ? 16 : 0;
+    for(let x=-off; x<W; x+=32){
+      c.strokeRect(x+1, y+1, 30, 14);
+    }
+  }
+  // floor tiles (drawn after the bricks so they cover them)
+  c.save(); c.beginPath(); c.rect(T, T, W-2*T, H-2*T); c.clip();
+  for(let y=T; y<H-T; y+=48) for(let x=T; x<W-T; x+=48){
+    const v = ((x/48 + y/48) % 2) ? 0 : 1;
+    c.fillStyle = v ? '#2b2438' : '#272033';
+    c.fillRect(x, y, 48, 48);
+    c.fillStyle = 'rgba(0,0,0,0.18)';
+    c.fillRect(x, y+46, 48, 2); c.fillRect(x+46, y, 2, 48);
+  }
+  c.restore();
+  // inner wall edge shadow
+  c.fillStyle = 'rgba(0,0,0,0.35)';
+  c.fillRect(T, T, W-2*T, 8);
+  c.fillStyle = '#5a4e74';
+  c.fillRect(T-4, T-4, W-2*T+8, 4); c.fillRect(T-4, H-T, W-2*T+8, 4);
+  c.fillRect(T-4, T-4, 4, H-2*T+8); c.fillRect(W-T, T-4, 4, H-2*T+8);
+  // torches
+  for(const [x,y] of [[T/2, 160],[T/2, H-160],[W-T/2,160],[W-T/2,H-160]]){
+    c.fillStyle = '#5b3a1e'; c.fillRect(x-3, y, 6, 14);
+  }
+}
+
+function drawTorches(t){
+  for(const [x,y] of [[T/2, 160],[T/2, H-160],[W-T/2,160],[W-T/2,H-160]]){
+    const f = 1 + Math.sin(t*12 + x)*0.15;
+    ctx.fillStyle = 'rgba(255,170,60,0.18)';
+    ctx.beginPath(); ctx.arc(x, y-2, 26*f, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffb347';
+    ctx.beginPath(); ctx.ellipse(x, y-4, 5*f, 9*f, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath(); ctx.ellipse(x, y-2, 2.5, 4.5, 0, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function drawDoors(){
+  const open = state === 'doors' || (state === 'feedback' && doors.length) ? doorAnim : 0;
+  DOOR_X.forEach((x, k)=>{
+    // frame
+    ctx.fillStyle = '#2a2236';
+    ctx.fillRect(x-DOOR_HALF-8, 0, DOOR_HALF*2+16, T+4);
+    // dark doorway
+    ctx.fillStyle = '#07050b';
+    ctx.fillRect(x-DOOR_HALF, 4, DOOR_HALF*2, T);
+    // wooden door slides up as it opens
+    const h = (T)*(1-open);
+    if(h > 0){
+      ctx.fillStyle = '#6b4423';
+      ctx.fillRect(x-DOOR_HALF, 4, DOOR_HALF*2, h);
+      ctx.fillStyle = '#4a2e17';
+      for(let i=1;i<4;i++) ctx.fillRect(x-DOOR_HALF + i*DOOR_HALF/2 - 1, 4, 2, h);
+      ctx.fillStyle = '#8a8f99';
+      ctx.fillRect(x-DOOR_HALF, 4+h*0.3, DOOR_HALF*2, 3);
+      ctx.fillRect(x-DOOR_HALF, 4+h*0.75, DOOR_HALF*2, 3);
+    }
+    // letter on the arch
+    const d = doors[k];
+    if(d){
+      ctx.fillStyle = '#ffcf4d';
+      ctx.font = 'bold 18px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(d.letter, x, 16);
+    }
+  });
+}
+
+function drawDoorLabels(){
+  if(!doors.length || state !== 'doors') return;
+  ctx.globalAlpha = Math.min(1, doorAnim*1.5);
+  ctx.font = 'bold 15px system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const q = QUESTIONS[qi];
+  for(const d of doors){
+    const text = `${d.letter}. ${q.opts[d.opt]}`;
+    const w = Math.min(230, ctx.measureText(text).width + 24);
+    ctx.fillStyle = 'rgba(10,8,16,0.85)';
+    roundRect(d.x-w/2, T+14, w, 32, 8); ctx.fill();
+    ctx.strokeStyle = '#ffcf4d'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, d.x, T+30, 216);
+    // arrow
+    ctx.fillStyle = 'rgba(255,207,77,0.7)';
+    ctx.beginPath(); ctx.moveTo(d.x, T+4); ctx.lineTo(d.x-7, T+12); ctx.lineTo(d.x+7, T+12); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+function shadow(x, y, rx){
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(x, y, rx, rx*0.4, 0, 0, Math.PI*2); ctx.fill();
+}
+
+function drawKnight(p){
+  shadow(p.x, p.y+12, 14);
+  if(p.inv > 0 && Math.floor(p.inv*16) % 2 === 0) ctx.globalAlpha = 0.4;
+  const bob = Math.sin(p.walk*14)*1.5;
+  const a = Math.atan2(p.fy, p.fx);
+  ctx.save();
+  ctx.translate(p.x, p.y + bob);
+
+  // sword
+  ctx.save();
+  if(p.atk > 0){
+    const s = 1 - p.atk/0.18;
+    const sa = a - 1.2 + s*2.4;
+    // swing trail
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(0, 0, p.reach-12, a-1.2, sa); ctx.stroke();
+    ctx.rotate(sa);
+    ctx.fillStyle = '#e8eef7'; ctx.fillRect(10, -2.5, p.reach-12, 5);
+    ctx.fillStyle = '#c9a227'; ctx.fillRect(8, -7, 4, 14);
+  } else {
+    ctx.rotate(a + 0.9);
+    ctx.fillStyle = '#e8eef7'; ctx.fillRect(10, -2, 22, 4);
+    ctx.fillStyle = '#c9a227'; ctx.fillRect(8, -6, 4, 12);
+  }
+  ctx.restore();
+
+  // cape
+  ctx.fillStyle = '#b3263a';
+  ctx.beginPath(); ctx.arc(0, 4, 13, 0, Math.PI); ctx.fill();
+  // body armor
+  ctx.fillStyle = '#9aa4b8';
+  ctx.beginPath(); ctx.arc(0, 2, 12, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#7c869a'; ctx.fillRect(-12, 2, 24, 3);
+  // shield on the off-hand side
+  const sx = Math.cos(a - 1.3)*12, sy = Math.sin(a - 1.3)*12;
+  ctx.fillStyle = '#2e6fd8';
+  ctx.beginPath(); ctx.arc(sx, sy+2, 7, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ffcf4d'; ctx.fillRect(sx-1, sy-3, 2, 10); ctx.fillRect(sx-4, sy+1, 8, 2);
+  // helmet
+  ctx.fillStyle = '#cfd6e2';
+  ctx.beginPath(); ctx.arc(0, -10, 9, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#1b1f2a';
+  ctx.fillRect(-6 + p.fx*2, -11 + p.fy*2, 12, 3);  // visor follows facing
+  // plume
+  ctx.fillStyle = '#e03a4f';
+  ctx.beginPath(); ctx.ellipse(0, -20, 3, 6, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function drawEnemy(e){
+  const sp = e.spawn > 0 ? 1 - e.spawn/0.6 : 1;
+  ctx.globalAlpha = sp;
+  const flash = e.hurt > 0;
+  if(e.type === 'slime'){
+    const sq = 1 + Math.sin(e.t*8)*0.12;
+    shadow(e.x, e.y+10, 14);
+    ctx.fillStyle = flash ? '#fff' : '#4fc062';
+    ctx.beginPath(); ctx.ellipse(e.x, e.y, 15*sq, 12/sq, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.ellipse(e.x-5, e.y-5, 4, 2.5, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#10301a';
+    ctx.fillRect(e.x-6, e.y-2, 3, 4); ctx.fillRect(e.x+3, e.y-2, 3, 4);
+  } else if(e.type === 'bat'){
+    const flap = Math.sin(e.t*20)*6;
+    shadow(e.x, e.y+16, 9);
+    ctx.fillStyle = flash ? '#fff' : '#8b5cd6';
+    ctx.beginPath();
+    ctx.moveTo(e.x-4, e.y); ctx.lineTo(e.x-20, e.y-6+flap); ctx.lineTo(e.x-12, e.y+4);
+    ctx.moveTo(e.x+4, e.y); ctx.lineTo(e.x+20, e.y-6+flap); ctx.lineTo(e.x+12, e.y+4);
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(e.x, e.y, 8, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffde59';
+    ctx.fillRect(e.x-4, e.y-2, 2, 2); ctx.fillRect(e.x+2, e.y-2, 2, 2);
+  } else if(e.type === 'skeleton'){
+    shadow(e.x, e.y+13, 13);
+    const step = Math.sin(e.t*10)*2;
+    ctx.fillStyle = flash ? '#fff' : '#d9d2bd';
+    ctx.fillRect(e.x-6, e.y+2, 3, 10+step); ctx.fillRect(e.x+3, e.y+2, 3, 10-step);
+    ctx.fillRect(e.x-7, e.y-4, 14, 9);
+    ctx.fillStyle = '#6b6555'; ctx.fillRect(e.x-6, e.y-1, 12, 1); ctx.fillRect(e.x-6, e.y+2, 12, 1);
+    ctx.fillStyle = flash ? '#fff' : '#ece6d2';
+    ctx.beginPath(); ctx.arc(e.x, e.y-11, 9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#c0283c';
+    ctx.fillRect(e.x-5, e.y-13, 3, 3); ctx.fillRect(e.x+2, e.y-13, 3, 3);
+    ctx.fillStyle = '#7a7466'; ctx.fillRect(e.x+9, e.y-8, 2, 18);  // bone club
+  } else if(e.type === 'ogre'){
+    shadow(e.x, e.y+20, 22);
+    ctx.fillStyle = flash ? '#fff' : '#a8473a';
+    ctx.beginPath(); ctx.arc(e.x, e.y, 22, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#e8dcc0';
+    ctx.beginPath(); ctx.moveTo(e.x-14, e.y-14); ctx.lineTo(e.x-20, e.y-30); ctx.lineTo(e.x-8, e.y-18); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(e.x+14, e.y-14); ctx.lineTo(e.x+20, e.y-30); ctx.lineTo(e.x+8, e.y-18); ctx.fill();
+    ctx.fillRect(e.x-8, e.y+6, 3, 6); ctx.fillRect(e.x+5, e.y+6, 3, 6);
+    ctx.fillStyle = '#ffde59';
+    ctx.fillRect(e.x-9, e.y-6, 5, 4); ctx.fillRect(e.x+4, e.y-6, 5, 4);
+  }
+  // health bar once damaged
+  if(e.hp < e.maxHp){
+    const w = e.r*2;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(e.x-w/2, e.y-e.r-18, w, 4);
+    ctx.fillStyle = '#ff4d6a'; ctx.fillRect(e.x-w/2, e.y-e.r-18, w*Math.max(0,e.hp/e.maxHp), 4);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawChest(c){
+  shadow(c.x, c.y+18, 26);
+  ctx.fillStyle = '#7a4a1f'; ctx.fillRect(c.x-24, c.y-6, 48, 24);
+  ctx.fillStyle = '#c9a227'; ctx.fillRect(c.x-24, c.y+2, 48, 3);
+  if(c.open){
+    ctx.fillStyle = 'rgba(255,220,100,0.45)';
+    ctx.beginPath(); ctx.arc(c.x, c.y-10, 34, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#5c3615'; ctx.fillRect(c.x-24, c.y-26, 48, 14);
+  } else {
+    const bob = Math.sin(performance.now()/300)*2;
+    ctx.fillStyle = '#8f5826'; ctx.fillRect(c.x-24, c.y-18+bob*0, 48, 14);
+    ctx.fillStyle = '#c9a227'; ctx.fillRect(c.x-4, c.y-8, 8, 10);
+    ctx.fillStyle = '#ffcf4d';
+    ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', c.x, c.y-34+bob);
+  }
+}
+
+function render(){
+  const t = performance.now()/1000;
+  ctx.setTransform(1,0,0,1,0,0);
+  if(roomCache) ctx.drawImage(roomCache, 0, 0);
+  const sx = shake > 0 ? rand(-1,1)*shake*16 : 0, sy = shake > 0 ? rand(-1,1)*shake*16 : 0;
+  ctx.setTransform(pxScale,0,0,pxScale, sx*pxScale, sy*pxScale);
+
+  drawTorches(t);
+  drawDoors();
+  if(!player) return;
+  drawDoorLabels();
+  if(chest) drawChest(chest);
+
+  // draw everything sorted by y for depth
+  const list = enemies.slice();
+  if(state !== 'over' && state !== 'win') list.push(player);
+  list.sort((a,b)=> a.y-b.y);
+  for(const o of list) (o === player ? drawKnight(o) : drawEnemy(o));
+
+  for(const p of particles){
+    ctx.globalAlpha = Math.max(0, p.life/p.max);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for(const f of floats){
+    ctx.globalAlpha = Math.min(1, f.life);
+    ctx.fillStyle = '#000'; ctx.fillText(f.text, f.x+2, f.y+2);
+    ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+  if(roomFade > 0){ ctx.fillStyle = `rgba(0,0,0,${roomFade})`; ctx.fillRect(-20,-20,W+40,H+40); }
+}
+
+/* ------------------------------ Main loop ------------------------------- */
+// Fixed-size physics steps: the game runs at the same speed on every
+// computer, whether the screen draws 30, 60 or 120 frames per second.
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, (now-last)/1000);
+  last = now;
+  const steps = Math.max(1, Math.ceil(dt/(1/60) - 1e-6));
+  for(let i=0;i<steps;i++) update(dt/steps);
+  render();
+}
+
+fit();
+updateHUD();
+titleScreen();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
