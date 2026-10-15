@@ -247,23 +247,23 @@ const UPGRADES = [
   {name:'Sharper Sword',  desc:'+1 damage',             apply:p=>{ p.dmg++; }},
   {name:'Long Blade',     desc:'+12 reach',             apply:p=>{ p.reach += 12; }},
   {name:'Swift Boots',    desc:'+30 speed',             apply:p=>{ p.speed += 30; }},
-  {name:'Heart Container',desc:'+1 max health & heal',  apply:p=>{ p.maxHp++; p.hp = p.maxHp; }},
+  {name:'Vitality',       desc:'+25 max health & heal', apply:p=>{ p.maxHp += 25; p.hp = p.maxHp; }},
   {name:'Healing Potion', desc:'Health fully restored', apply:p=>{ p.hp = p.maxHp; }},
 ];
 
 function newPlayer(){
-  return { x:W/2, y:FB-30, r:16, hp:5, maxHp:5, speed:200, dmg:1, reach:56,
+  return { x:W/2, y:FB-30, r:16, hp:100, maxHp:100, speed:200, dmg:1, reach:56,
            dir:'up', moving:false, atk:0, cd:0, inv:0, walk:0, kbx:0, kby:0 };
 }
 const DIRV = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
 
 /* ------------------------------ Enemies --------------------------------- */
-// r = hitbox radius, draw = sprite size on screen
+// r = hitbox radius, dmg = health taken per hit (player has 100), draw = sprite size on screen
 const ETYPES = {
-  slime:    { hp:2, speed:110, r:13, dmg:1, draw:46, sheet:'slime'    },
-  goblin:   { hp:2, speed:70,  r:15, dmg:1, draw:62, sheet:'goblin'   },
-  skeleton: { hp:4, speed:110, r:15, dmg:1, draw:58, sheet:'skeleton' },
-  ogre:     { hp:9, speed:68,  r:24, dmg:2, draw:96, sheet:'ogre'     },
+  slime:    { hp:2, speed:110, r:13, dmg:8,  draw:46, sheet:'slime'    },
+  goblin:   { hp:2, speed:70,  r:15, dmg:10, draw:62, sheet:'goblin'   },
+  skeleton: { hp:4, speed:110, r:15, dmg:15, draw:58, sheet:'skeleton' },
+  ogre:     { hp:9, speed:68,  r:24, dmg:25, draw:96, sheet:'ogre'     },
 };
 function spawnEnemy(type){
   const d = ETYPES[type];
@@ -577,7 +577,7 @@ function updateEnemies(dt){
     e.y = clamp(e.y, FT+e.r, FB-e.r);
 
     if(p.inv <= 0 && Math.hypot(p.x-e.x, p.y-e.y) < p.r+e.r-2){
-      p.hp -= e.dmg; p.inv = 1.0; shake = 0.25;
+      p.hp = Math.max(0, p.hp - e.dmg); p.inv = 0.7; shake = 0.25;
       p.kbx = (p.x-e.x)/dist*420; p.kby = (p.y-e.y)/dist*420;
       Snd.hurt();
       burst(p.x, p.y, 12, '#ff4d6a', 200, 0.4);
