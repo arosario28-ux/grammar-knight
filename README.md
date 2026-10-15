@@ -15,5 +15,6 @@ A dungeon game that entertains people while they learn English grammar.
 Developers: Nico (Alejandro), Nikita, Sebastian
 - Code: Nico
 - Sentences: Nikita, Alejandro
+- Graphics & sounds: [knight-game](https://github.com/thestrongestcode/knight-game) by thestrongestcode (MIT license, see LICENSE-knight-game)
 
 To add more questions, edit the `QUESTIONS` list near the top of `index.html`.
